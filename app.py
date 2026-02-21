@@ -91,8 +91,7 @@ JINA:
 SIMU:
 LOCATION:
 BIDHAA:
-IDADI:
-"""
+IDADI:"""
 
 Jibu kwa ufupi na kirafiki.
 
