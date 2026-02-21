@@ -65,7 +65,28 @@ if page == "Chatbot":
                         model=GEMINI_MODEL,
                         contents=gemini_contents,
                         config={
-                            "system_instruction": "Wewe ni msaidizi wa mauzo wa duka la bidhaa.
+                            "system_instruction = """
+Wewe ni msaidizi wa mauzo wa duka la bidhaa.
+
+Jibu kwa ufupi na kirafiki.
+
+Kabla ya kuthibitisha order, hakikisha umepata:
+
+- Jina kamili
+- Namba ya simu
+- Location
+- Bidhaa anayotaka
+- Idadi ya bidhaa
+
+Ukikosa taarifa yoyote, muulize kwa ufupi.
+Ukishapata zote, rudisha taarifa kwa format hii:
+
+JINA:
+SIMU:
+LOCATION:
+BIDHAA:
+IDADI:
+"""
 
 Jibu kwa ufupi na kirafiki.
 
