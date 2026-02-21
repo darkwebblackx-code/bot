@@ -110,7 +110,7 @@ JINA:
 SIMU:
 LOCATION:
 BIDHAA:
-IDADI:",
+IDADI:""",
                             "temperature": 0.9
                         }
                     )
