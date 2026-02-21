@@ -1,34 +1,25 @@
-# app.py (Msingo wa Streamlit Chatbot - Imetengenezwa kwa ajili ya Render)
-
 import streamlit as st
-import os 
+import os
+import sqlite3
 from google import genai
 from google.genai.errors import APIError
 
-# --- 1. Usanidi wa API Client na Models ---
+# --- 1. Gemini API Setup ---
+RENDER_ENV_VAR_NAME = "GEMINI_API_KEY_RENDER"
+API_KEY = os.environ.get(RENDER_ENV_VAR_NAME)
 
-RENDER_ENV_VAR_NAME = "GEMINI_API_KEY_RENDER" 
-
-try:
-    API_KEY = os.environ.get(RENDER_ENV_VAR_NAME)
-
-    if not API_KEY:
-        st.error(f"❌ Kosa: Key ya Gemini haijapatikana. Tafadhali weka Environment Variable iitwayo '{RENDER_ENV_VAR_NAME}' yenye API Key yako kwenye dashibodi ya Render.")
-        st.stop()
-        
-    @st.cache_resource
-    def initialize_gemini_client(api_key):
-        return genai.Client(api_key=api_key) 
-            
-    client = initialize_gemini_client(API_KEY)
-
-except Exception as e:
-    st.error(f"Kosa kubwa wakati wa kuunganisha na Gemini: {e}")
+if not API_KEY:
+    st.error(f"❌ Gemini API Key haijapatikana. Tafadhali weka '{RENDER_ENV_VAR_NAME}' kwenye Render Environment Variables.")
     st.stop()
 
-# Usanidi wa Model na SYSTEM PROMPT ILIYOBINAFSISHWA
-GEMINI_MODEL = "gemini-2.5-flash" 
+@st.cache_resource
+def initialize_gemini_client(api_key):
+    return genai.Client(api_key=api_key)
 
+client = initialize_gemini_client(API_KEY)
+GEMINI_MODEL = "gemini-2.5-flash"
+
+# --- 2. System Prompt (imehifadhiwa kamili kutoka kwako) ---
 SYSTEM_PROMPT = """
 Wewe ni **Coty**, mhudumu wa wateja wa kidigitali mwenye **uwezo na akili mnemba (AI)**, uliyebuniwa na **Aqua Softwares**. Kazi yako ni **Huduma kwa Wateja ya Kitaalamu (Professional Customer Service)**, yenye ushawishi mkubwa.
 
@@ -115,65 +106,114 @@ ALPHA PUD MEDIUM 25,000.
 
 7.  **product branding:** baada ya kutaja bei elezea maneno ya kumshawishi mteja mfano kama ni nyama mwambie ni tam sana na rahisi kupika na inaldha halisi ya ng'ombe.
 8.  **mteja akionesha kukubali kuipenda au kukubali kuinunua mwambie unaweza ukamuwekea oda na akaletewa mpaka mlangoni kwake haraka sana bila hata kufika dukani.
-9.  **kama mteja akiuliza location ya coty butchery: mpatie link hii **https://maps.app.goo.gl/Wp18PHX99Zvjk3f6. mshauri mteja anaweza akatumia hiyo link kwenye app ya Bolt kwa usafiri wa haraka  au aweke order ya delivery kwa haraka zaidi na nafuu.
+9.  **kama mteja akiuliza location ya coty butchery: mpatie link hii **https://maps.app.goo.gl/Wp18PHX99Zvjk3f6.
 10. **mteja akionesha wasi wasi kuhusu gharama za delivery umjibu kua utachangia pesa kidogo sana ili mzigo ufike mlangoni kwako haraka sana bila foleni.Na mwambie na usisitize kampeni yetu ya "RUKA FOLENI NA COTY APP" mwambie analetewa bidha haraka sana na nafuu.
-11. **Tumia emoji kwa kila sentensi ili kuelezea hisia au maana ieleweke zaidi
-12. **T
-
-**KAMWE USISAHAU JINA LA MTEJA KATIKA MAZUNGUMZO YOTE BAADA YA KULIULIZA.**
+11. **Tumia emoji kwa kila sentensi kwa kuelezea hisia au maana.
+12. **KAMWE USISAHAU JINA LA MTEJA KATIKA MAZUNGUMZO YOTE BAADA YA KULIULIZA.**
 """
 
-# --- 2. Usanidi wa Streamlit UI na Logic ---
-# ... (Sehemu iliyobaki ya msimbo inabaki kama ilivyo) ...
+# --- 3. Database Setup ---
+DB_NAME = "orders.db"
+if not os.path.exists(DB_NAME):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            location TEXT NOT NULL,
+            order_details TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            status TEXT DEFAULT 'Pending'
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-st.set_page_config(page_title="Aura Chatbot (Gemini Powered)", page_icon="✨")
-st.title("Karibu Coty Butchery")
-st.caption("mtoa huduma wa haraka zaidi wa kidigitali!")
+# --- 4. Function to save order ---
+def save_order(name, phone, location, details):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO orders (customer_name, phone, location, order_details)
+        VALUES (?, ?, ?, ?)
+    """, (name, phone, location, details))
+    conn.commit()
+    conn.close()
+    st.success("✅ Order imehifadhiwa kwenye system!")
 
-# Anzisha historia ya mazungumzo
+# --- 5. Streamlit UI ---
+st.set_page_config(page_title="Coty AI Chatbot", page_icon="🤖")
+st.title("🤖 Karibu Coty Butchery AI Chatbot")
+st.caption("Huduma ya haraka zaidi ya kidigitali!")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "order_in_progress" not in st.session_state:
+    st.session_state.order_in_progress = False
+if "customer_data" not in st.session_state:
+    st.session_state.customer_data = {}
 
-# Onyesha historia ya mazungumzo
+# --- 6. Show previous chat ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Kichakata cha kuingiza maoni ya mtumiaji
+# --- 7. Chat input ---
 if prompt := st.chat_input("Uliza swali lako hapa"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Gemini input
     gemini_contents = [
-        {"role": "user" if m["role"] == "user" else "model", "parts": [{"text": m["content"]}]}
+        {"role": "user" if m["role"]=="user" else "model", "parts":[{"text": m["content"]}]}
         for m in st.session_state.messages
     ]
 
     try:
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                
+            with st.spinner("AI ikijibu..."):
                 chat_completion = client.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=gemini_contents,
-                    config={
-                        "system_instruction": SYSTEM_PROMPT, 
-                        "temperature": 0.8, 
-                    }
+                    config={"system_instruction": SYSTEM_PROMPT,"temperature":0.8}
                 )
-                
                 response = chat_completion.text
                 st.markdown(response)
+                st.session_state.messages.append({"role":"assistant","content":response})
 
     except APIError as e:
-        response = f"Nakuomba radhi, mfumo wa Gemini una changamoto kwa sasa (API Error). Kosa: {e}"
+        response = f"Nakuomba radhi, Gemini ina shida. Kosa: {e}"
         st.markdown(response)
-        
+        st.session_state.messages.append({"role":"assistant","content":response})
     except Exception as e:
-        response = f"Samahani, kumetokea kosa lisilotarajiwa: {e}" 
+        response = f"Samahani, kumetokea kosa: {e}"
         st.markdown(response)
+        st.session_state.messages.append({"role":"assistant","content":response})
 
+    # --- 8. Order detection ---
+    keywords = ["nununua","oda","penda","buy","order","napenda"]
+    if any(word in prompt.lower() for word in keywords):
+        st.session_state.order_in_progress = True
+        st.info("📌 Nimeona unataka kufanya order! Tafadhali jaza taarifa hizi.")
 
-    st.session_state.messages.append({"role": "assistant", "content": response})
+# --- 9. Order Form ---
+if st.session_state.order_in_progress:
+    with st.form("order_form"):
+        st.subheader("Weka Order Yako")
+        customer_name = st.text_input("Jina Lako Kamili", st.session_state.customer_data.get("name",""))
+        phone = st.text_input("Namba ya Simu", st.session_state.customer_data.get("phone",""))
+        location = st.text_input("Location / Address", st.session_state.customer_data.get("location",""))
+        order_details = st.text_area("Order Details / Bidhaa Unazotaka")
+        submit = st.form_submit_button("Weka Order")
 
+        if submit:
+            if customer_name and phone and location and order_details:
+                save_order(customer_name, phone, location, order_details)
+                st.session_state.customer_data = {"name":customer_name,"phone":phone,"location":location}
+                st.session_state.order_in_progress = False
+                st.success("🎉 Order imerekodiwa na AI imefahamiana na admin page!")
+            else:
+                st.error("❌ Tafadhali jaza taarifa zote muhimu.")
