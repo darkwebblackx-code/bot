@@ -1,4 +1,4 @@
-# app.py - Coty AI Chatbot & Order Tracker
+# app.py - Coty AI Chatbot & Order Tracker (FIXED)
 
 import streamlit as st
 import os
@@ -6,14 +6,13 @@ import sqlite3
 from google import genai
 from google.genai.errors import APIError
 
-# -----------------------------
-# 1. GEMINI API SETUP
-# -----------------------------
-RENDER_ENV_VAR_NAME = "GEMINI_API_KEY_RENDER"
-API_KEY = os.environ.get(RENDER_ENV_VAR_NAME)
+# ----------------------------
+# GEMINI SETUP
+# ----------------------------
+API_KEY = os.environ.get("GEMINI_API_KEY_RENDER")
 
 if not API_KEY:
-    st.error(f"❌ Gemini API key haipatikani. Weka Environment Variable '{RENDER_ENV_VAR_NAME}'")
+    st.error("Weka GEMINI_API_KEY_RENDER kwenye Environment Variables")
     st.stop()
 
 @st.cache_resource
@@ -21,13 +20,12 @@ def init_client(key):
     return genai.Client(api_key=key)
 
 client = init_client(API_KEY)
-GEMINI_MODEL = "gemini-2.5-flash"
+MODEL = "gemini-2.5-flash"
 
-# -----------------------------
-# 2. DATABASE SETUP
-# -----------------------------
-DB_NAME = "orders.db"
-conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+# ----------------------------
+# DATABASE
+# ----------------------------
+conn = sqlite3.connect("orders.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -42,23 +40,23 @@ CREATE TABLE IF NOT EXISTS orders (
 """)
 conn.commit()
 
-# -----------------------------
-# 3. SYSTEM PROMPT
-# -----------------------------
+# ----------------------------
+# SYSTEM PROMPT
+# ----------------------------
 SYSTEM_PROMPT = """
-Wewe ni Coty, mhudumu wa wateja wa kidigitali.
+Wewe ni mhudumu wa wateja.
 
-Jibu kwa ufupi na kirafiki.
+Jibu kwa ufupi.
 
-Kabla ya kuthibitisha order, hakikisha umepata:
+Kabla ya kuthibitisha order hakikisha una:
 
-- Jina kamili
-- Namba ya simu
-- Location
-- Bidhaa
-- Idadi
+Jina
+Simu
+Location
+Bidhaa
+Idadi
 
-Ukishapata zote, rudisha kwa format hii:
+Ukishapata zote rudisha hivi:
 
 JINA:
 SIMU:
@@ -67,52 +65,40 @@ BIDHAA:
 IDADI:
 """
 
-# -----------------------------
-# 4. ORDER DETECTION FUNCTION
-# -----------------------------
-def detect_order(ai_response):
-    fields = {
-        "jina": None,
-        "simu": None,
-        "location": None,
-        "bidhaa": None,
-        "idadi": None
-    }
+# ----------------------------
+# DETECT ORDER
+# ----------------------------
+def detect_order(text):
+    data = {}
+    lines = text.split("\n")
 
-    for line in ai_response.split("\n"):
-        line = line.strip()
+    for line in lines:
+        if line.startswith("JINA:"):
+            data["jina"] = line.replace("JINA:", "").strip()
+        elif line.startswith("SIMU:"):
+            data["simu"] = line.replace("SIMU:", "").strip()
+        elif line.startswith("LOCATION:"):
+            data["location"] = line.replace("LOCATION:", "").strip()
+        elif line.startswith("BIDHAA:"):
+            data["bidhaa"] = line.replace("BIDHAA:", "").strip()
+        elif line.startswith("IDADI:"):
+            data["idadi"] = line.replace("IDADI:", "").strip()
 
-        if line.upper().startswith("JINA:"):
-            fields["jina"] = line.split(":",1)[1].strip()
-
-        elif line.upper().startswith("SIMU:"):
-            fields["simu"] = line.split(":",1)[1].strip()
-
-        elif line.upper().startswith("LOCATION:"):
-            fields["location"] = line.split(":",1)[1].strip()
-
-        elif line.upper().startswith("BIDHAA:"):
-            fields["bidhaa"] = line.split(":",1)[1].strip()
-
-        elif line.upper().startswith("IDADI:"):
-            fields["idadi"] = line.split(":",1)[1].strip()
-
-    if all(fields.values()):
-        return fields
+    if len(data) == 5:
+        return data
     return None
 
-# -----------------------------
-# 5. STREAMLIT UI
-# -----------------------------
-st.set_page_config(page_title="Coty Chatbot & Admin", page_icon="✨")
-st.title("Coty Butchery - Chatbot na Orders")
+# ----------------------------
+# UI
+# ----------------------------
+st.set_page_config(page_title="Coty Orders", page_icon="🛒")
+st.title("Coty Butchery System")
 
-st.sidebar.header("Navigation")
-page = st.sidebar.selectbox("Chagua page", ["Chatbot", "Admin"])
+page = st.sidebar.selectbox("Chagua Page", ["Chatbot", "Admin"])
 
-# -----------------------------
-# CHATBOT PAGE
-# -----------------------------
+# ----------------------------
+# CHATBOT
+# ----------------------------
 if page == "Chatbot":
 
     if "messages" not in st.session_state:
@@ -122,44 +108,33 @@ if page == "Chatbot":
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Uliza au toa order hapa..."):
+    if prompt := st.chat_input("Andika ujumbe..."):
 
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.messages.append({"role":"user","content":prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        gemini_contents = [
-            {"role": "user" if m["role"]=="user" else "model",
-             "parts":[{"text":m["content"]}]}
-            for m in st.session_state.messages
-        ]
-
         try:
-            with st.chat_message("assistant"):
-                with st.spinner("AI inafikiria..."):
-                    chat_completion = client.models.generate_content(
-                        model=GEMINI_MODEL,
-                        contents=gemini_contents,
-                        config={
-                            "system_instruction": SYSTEM_PROMPT,
-                            "temperature": 0.3
-                        }
-                    )
+            response_obj = client.models.generate_content(
+                model=MODEL,
+                contents=prompt,
+                config={
+                    "system_instruction": SYSTEM_PROMPT,
+                    "temperature": 0.3
+                }
+            )
 
-                    response = chat_completion.text
-                    st.markdown(response)
-
-        except APIError as e:
-            response = f"Kosa la AI: {e}"
-            st.markdown(response)
+            response = response_obj.text
 
         except Exception as e:
-            response = f"Kosa lisilotarajiwa: {e}"
+            response = f"AI Error: {e}"
+
+        with st.chat_message("assistant"):
             st.markdown(response)
 
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.messages.append({"role":"assistant","content":response})
 
-        # -------- ORDER DETECTION --------
+        # SAVE ORDER IF VALID
         order = detect_order(response)
 
         if order:
@@ -174,26 +149,36 @@ if page == "Chatbot":
                 order["idadi"]
             ))
             conn.commit()
-            st.success("✅ Order imehifadhiwa!")
+            st.success("✅ Order yako imehifadhiwa kikamilifu!")
 
-# -----------------------------
+# ----------------------------
 # ADMIN PAGE
-# -----------------------------
-elif page == "Admin":
+# ----------------------------
+if page == "Admin":
 
-    st.header("Admin Orders")
+    st.header("📦 Orders Zote")
 
-    cursor.execute("SELECT * FROM orders")
-    data = cursor.fetchall()
+    cursor.execute("SELECT * FROM orders ORDER BY id DESC")
+    orders = cursor.fetchall()
 
-    if data:
-        for row in data:
-            st.write(f"""
-            Jina: {row[1]}
-            Simu: {row[2]}
-            Location: {row[3]}
-            Bidhaa: {row[4]}
-            Idadi: {row[5]}
-            """)
+    if not orders:
+        st.warning("Hakuna order bado.")
     else:
-        st.info("Hakuna order bado.")
+        for order in orders:
+            col1, col2 = st.columns([5,1])
+
+            with col1:
+                st.markdown(f"""
+                **Jina:** {order[1]}  
+                **Simu:** {order[2]}  
+                **Location:** {order[3]}  
+                **Bidhaa:** {order[4]}  
+                **Idadi:** {order[5]}
+                """)
+
+            with col2:
+                if st.button("Delete", key=f"delete_{order[0]}"):
+                    cursor.execute("DELETE FROM orders WHERE id=?", (order[0],))
+                    conn.commit()
+                    st.success("Order imefutwa!")
+                    st.rerun()
