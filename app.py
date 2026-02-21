@@ -65,8 +65,27 @@ if page == "Chatbot":
                         model=GEMINI_MODEL,
                         contents=gemini_contents,
                         config={
-                            "system_instruction": "Wewe ni mhudumu rafiki wa Coty. Uliza jina, namba ya simu, location, na idadi ya bidhaa. Jibu kwa ufupi, kirafiki na kwa heshima.ditect order kisha uitume kwenye admin page na taarifa ake muhim",
-                            "temperature": 0.2
+                            "system_instruction": "Wewe ni msaidizi wa mauzo wa duka la bidhaa.
+
+Jibu kwa ufupi na kirafiki.
+
+Kabla ya kuthibitisha order, hakikisha umepata:
+
+- Jina kamili
+- Namba ya simu
+- Location
+- Bidhaa anayotaka
+- Idadi ya bidhaa
+
+Ukikosa taarifa yoyote, muulize kwa ufupi.
+Ukishapata zote, rudisha taarifa kwa format hii:
+
+JINA:
+SIMU:
+LOCATION:
+BIDHAA:
+IDADI:",
+                            "temperature": 0.9
                         }
                     )
                     response = chat_completion.text
@@ -80,42 +99,81 @@ if page == "Chatbot":
 
         st.session_state.messages.append({"role": "assistant", "content": response})
 
-        # --- 5. Detect order data from AI response ---
-        # Tunatazama kama mteja ametoa jina, phone, location, product, quantity
-        import re
-        name_match = re.search(r"Jina[:\s]*([A-Za-z ]+)", response, re.IGNORECASE)
-        phone_match = re.search(r"(?:Simu|Phone)[:\s]*(\+?\d+)", response, re.IGNORECASE)
-        location_match = re.search(r"Location[:\s]*([A-Za-z0-9 ,.-]+)", response, re.IGNORECASE)
-        product_match = re.search(r"Bidhaa[:\s]*([A-Za-z0-9 ]+)", response, re.IGNORECASE)
-        quantity_match = re.search(r"Idadi[:\s]*(\d+)", response, re.IGNORECASE)
+      import re
 
-        if name_match and phone_match and location_match and product_match and quantity_match:
-            c.execute(
-                "INSERT INTO orders (name, phone, location, product, quantity, date) VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    name_match.group(1).strip(),
-                    phone_match.group(1).strip(),
-                    location_match.group(1).strip(),
-                    product_match.group(1).strip(),
-                    int(quantity_match.group(1)),
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                )
-            )
-            conn.commit()
-            st.success("✅ Order imehifadhiwa kikamilifu!")
+def detect_order(ai_response):
+    fields = {
+        "jina": None,
+        "simu": None,
+        "location": None,
+        "bidhaa": None,
+        "idadi": None
+    }
 
-# --- 6. Admin page ---
-if page == "Admin":
-    st.subheader("Admin - Orders Details 📋")
-    df = None
-    try:
-        import pandas as pd
-        df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
-    except Exception as e:
-        st.error(f"Kosa kufetch orders: {e}")
-    
-    if df is not None and not df.empty:
-        st.dataframe(df)
-        st.audio("https://www.soundjay.com/buttons/sounds/button-16.mp3")  # kengele ya sauti
-    else:
-        st.info("Hakuna orders kwa sasa.")
+    for line in ai_response.split("\n"):
+        line = line.strip()
+
+        if line.upper().startswith("JINA:"):
+            fields["jina"] = line.split(":",1)[1].strip()
+
+        elif line.upper().startswith("SIMU:"):
+            fields["simu"] = line.split(":",1)[1].strip()
+
+        elif line.upper().startswith("LOCATION:"):
+            fields["location"] = line.split(":",1)[1].strip()
+
+        elif line.upper().startswith("BIDHAA:"):
+            fields["bidhaa"] = line.split(":",1)[1].strip()
+
+        elif line.upper().startswith("IDADI:"):
+            fields["idadi"] = line.split(":",1)[1].strip()
+
+    # Hakikisha zote zipo
+    if all(fields.values()):
+        return fields
+    return None
+
+order = detect_order(ai_response)
+
+if order:
+    cursor.execute("""
+        INSERT INTO orders (jina, simu, location, bidhaa, idadi)
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        order["jina"],
+        order["simu"],
+        order["location"],
+        order["bidhaa"],
+        order["idadi"]
+    ))
+
+    conn.commit()
+    st.success("Order imehifadhiwa!")
+st.header("Admin Orders")
+
+cursor.execute("SELECT * FROM orders")
+data = cursor.fetchall()
+
+if data:
+    for row in data:
+        st.write(f"""
+        Jina: {row[1]}
+        Simu: {row[2]}
+        Location: {row[3]}
+        Bidhaa: {row[4]}
+        Idadi: {row[5]}
+        """)
+else:
+    st.info("Hakuna order bado.")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    jina TEXT,
+    simu TEXT,
+    location TEXT,
+    bidhaa TEXT,
+    idadi TEXT
+)
+""")
+conn.commit()
