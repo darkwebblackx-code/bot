@@ -65,8 +65,8 @@ if page == "Chatbot":
                         model=GEMINI_MODEL,
                         contents=gemini_contents,
                         config={
-                            "system_instruction": "Wewe ni mhudumu rafiki wa Coty. Uliza jina, namba ya simu, location, na idadi ya bidhaa. Jibu kwa ufupi, kirafiki na kwa heshima.",
-                            "temperature": 0.7
+                            "system_instruction": "Wewe ni mhudumu rafiki wa Coty. Uliza jina, namba ya simu, location, na idadi ya bidhaa. Jibu kwa ufupi, kirafiki na kwa heshima.ditect order kisha uitume kwenye admin page na taarifa ake muhim",
+                            "temperature": 0.2
                         }
                     )
                     response = chat_completion.text
