@@ -27,19 +27,7 @@ DB_NAME = "orders.db"
 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 c = conn.cursor()
 
-# Unda table ya orders kama haipo
-c.execute("""
-CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    phone TEXT,
-    location TEXT,
-    product TEXT,
-    quantity INTEGER,
-    date TEXT
-)
-""")
-conn.commit()
+
 
 # --- 3. Streamlit page setup ---
 st.set_page_config(page_title="Coty Chatbot & Admin", page_icon="✨")
